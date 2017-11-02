@@ -37,22 +37,24 @@ MyMessage status_msg(CHILD_ID_BRIGHTNESS, V_STATUS);
 MyMessage brightness_msg(CHILD_ID_BRIGHTNESS, V_PERCENTAGE);
 MyMessage rgb_msg(CHILD_ID_SEG_1, V_RGB);
 
-void setup()
-{
-	LEDS.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
-}
-
 void presentation()
 {
-    sendSketchInfo(SN, SV);
+	sendSketchInfo(SN, SV);
 
 	present(CHILD_ID_BRIGHTNESS, S_DIMMER, "brightness");
 
-	for (uint8_t i = 0; i < sizeof(segments); i++) {
-		present(CHILD_ID_SEG_1 + i, S_RGB_LIGHT);
+	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
+		char desc[] = "segment n";
+		itoa(i + 1, &desc[8], 10);
+		present(CHILD_ID_SEG_1 + i, S_RGB_LIGHT, desc);
 	}
 
 	//present(CHILD_ID_IR, S_IR, "IR receiver");
+}
+
+void setup()
+{
+	LEDS.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
 }
 
 void loop()
@@ -82,7 +84,7 @@ void receive(const MyMessage &message)
 		}
 	}
 
-	if (message.sensor >= CHILD_ID_SEG_1 && message.sensor < CHILD_ID_SEG_1 + sizeof(segments)) {
+	if (message.sensor >= CHILD_ID_SEG_1 && message.sensor < CHILD_ID_SEG_1 + NUM_SEGMENTS) {
 		uint8_t i = message.sensor - CHILD_ID_SEG_1;
 
 		if (message.type == V_STATUS) {
@@ -106,7 +108,7 @@ void update_all()
 {
 	update_brightness();
 
-	for (uint8_t i = 0; i < sizeof(segments); i++) {
+	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
 		update_segment(i);
 	}
 }
@@ -134,7 +136,7 @@ void send_all()
 	send_status();
 	send_brightness();
 
-	for (uint8_t i = 0; i < sizeof(segments); i++) {
+	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
 		send_segment_status(i);
 		send_segment_color(i);
 	}
