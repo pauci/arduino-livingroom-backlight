@@ -2,7 +2,7 @@
 
 #include <MySensors.h>
 
-#define SN "Livingroom backlight"
+#define SN "Livingroom Backlight"
 #define SV "1.0"
 
 #define CHILD_ID_BRIGHTNESS 1
@@ -32,19 +32,20 @@ struct {
 	CRGB color = CRGB::Yellow;
 } segments[NUM_SEGMENTS];
 
-
 MyMessage status_msg(CHILD_ID_BRIGHTNESS, V_STATUS);
 MyMessage brightness_msg(CHILD_ID_BRIGHTNESS, V_PERCENTAGE);
 MyMessage rgb_msg(CHILD_ID_SEG_1, V_RGB);
+
+char buf[6];
 
 void presentation()
 {
 	sendSketchInfo(SN, SV);
 
-	present(CHILD_ID_BRIGHTNESS, S_DIMMER, "brightness");
+	present(CHILD_ID_BRIGHTNESS, S_DIMMER, "Brightness");
 
 	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
-		char desc[] = "segment n";
+		char desc[] = "Segment n";
 		itoa(i + 1, &desc[8], 10);
 		present(CHILD_ID_SEG_1 + i, S_RGB_LIGHT, desc);
 	}
@@ -55,17 +56,14 @@ void presentation()
 void setup()
 {
 	LEDS.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
+
+	update_all();
+	send_all();
 }
 
 void loop()
 {
-	static bool first_message_sent = false;
-	if (first_message_sent == false) {
-		update_all();
-		send_all();
-		LEDS.show();
-		first_message_sent = true;
-	}
+	LEDS.show();
 }
 
 void receive(const MyMessage &message)
@@ -100,8 +98,6 @@ void receive(const MyMessage &message)
 			send_segment_color(i);
 		}
 	}
-
-	LEDS.show();
 }
 
 void update_all()
@@ -162,5 +158,6 @@ void send_segment_status(uint8_t i)
 void send_segment_color(uint8_t i)
 {
 	rgb_msg.sensor = CHILD_ID_SEG_1 + i;
-	send(rgb_msg.set(String(segments[i].color, HEX)));
+	sprintf(buf, "%02X%02X%02X", segments[i].color.r, segments[i].color.g, segments[i].color.b);
+	send(rgb_msg.set(buf));
 }
