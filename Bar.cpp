@@ -1,14 +1,19 @@
 #include "Bar.h"
 
-Bar::Bar(uint16_t startPos16, uint16_t endPos16) : startPos16(startPos16), endPos16(endPos16) {}
+Bar::Bar(long startPos16, long endPos16) : startPos16(startPos16), endPos16(endPos16) {}
 
-void Bar::transform(const Bar & from, const Bar & to, const uint32_t duration, const uint32_t elapsed)
+void Bar::transform(const Bar & from, const Bar & to, const long duration, const long elapsed)
 {
-	startPos16 = from.startPos16 + (to.startPos16 - from.startPos16) * elapsed / duration;
-	endPos16 = from.endPos16 + (to.endPos16 - from.endPos16) * elapsed / duration;
+	startPos16 = map(elapsed, duration, from.startPos16, to.startPos16);
+	endPos16 = map(elapsed, duration, from.endPos16, to.endPos16);
 }
 
-void Bar::draw(CRGB & leds)
+long Bar::map(const long x, const long in_max, const long out_min, const long out_max)
+{
+	return x * (out_max - out_min) / in_max + out_min;
+}
+
+void Bar::draw(struct CRGB * leds, const struct CRGB & color)
 {
 	if (startPos16 >= endPos16) {
 		return;
@@ -27,16 +32,23 @@ void Bar::draw(CRGB & leds)
 		firstBrightness = (lastFrac - firstFrac) * 16;
 	}
 
+	CRGB c;
 	for (int i = firstLed; i <= lastLed; ++i) {
-		CRGB c = color;
+		c = color;
 
 		if (i == firstLed) {
+			c = color;
 			c.nscale8(firstBrightness);
+			leds[i] += c;
 		} else if (i == lastLed) {
+			c = color;
 			c.nscale8(lastBrightness);
+			leds[i] += c;
+		} else {
+			leds[i] = color;
 		}
 
-		leds[i] += c;
+		leds[i] = c;
 	}
 }
 

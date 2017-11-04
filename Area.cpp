@@ -8,9 +8,9 @@ void Area::transform(const Area from, const Area to, const uint32_t duration, co
 	bar2.transform(from.bar2, to.bar2, duration, elapsed);
 }
 
-void Area::draw(CRGB & leds)
+void Area::draw(struct CRGB * leds, const struct CRGB & color)
 {
-	bar1.draw(leds);
-	bar2.draw(leds);
+	bar1.draw(leds, color);
+	bar2.draw(leds, color);
 }
 

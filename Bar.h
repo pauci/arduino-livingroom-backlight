@@ -1,26 +1,19 @@
-// Bar.h
+#pragma once
 
-#ifndef _BAR_h
-#define _BAR_h
-
-#if defined(ARDUINO) && ARDUINO >= 100
-	#include "wprogram.h"
-#else
-	#include "WProgram.h"
-#endif
+#include <FastLED.h>
 
 class Bar
 {
-    uint16_t startPos16;
-    uint16_t endPos16;
+	long startPos16;
+	long endPos16;
+
+	long map(const long x, const long in_max, const long out_min, const long out_max);
 
   public:
-    Bar(uint16_t startPos16, uint16_t endPos16);
+    Bar(long startPos16, long endPos16);
 
-    void transform(const Bar & from, const Bar & to, const uint32_t duration, const uint32_t elapsed);
+    void transform(const Bar & from, const Bar & to, const long duration, const long elapsed);
 
-    void draw(CRGB & leds);
+    void draw(struct CRGB * leds, const struct CRGB & color);
 };
-
-#endif
 

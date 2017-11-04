@@ -1,13 +1,7 @@
-// Area.h
+#pragma once
 
-#ifndef _AREA_h
-#define _AREA_h
-
-#if defined(ARDUINO) && ARDUINO >= 100
-	#include "wprogram.h"
-#else
-	#include "WProgram.h"
-#endif
+#include "Bar.h"
+#include <FastLED.h>
 
 class Area
 {
@@ -19,8 +13,6 @@ class Area
 
 	void transform(const Area from, const Area to, const uint32_t duration, const uint32_t elapsed);
 
-	void draw(CRGB & leds);
+	void draw(struct CRGB * leds, const struct CRGB & color);
 };
-
-#endif
 

@@ -8,7 +8,6 @@
 #define SV "1.0"
 
 #define CHILD_ID_LIGHT 1
-#define CHILD_ID_LIGHT_MODE 2
 
 #include <FastLED.h>
 
@@ -23,7 +22,7 @@ CRGB leds[NUM_STRIPS * NUM_LEDS_PER_STRIP];
 
 int16_t state = LIGHT_OFF;
 int16_t brightness = 50;
-CRGB color = CRGB::Yellow;
+CRGB color = CRGB::LightYellow;
 
 #define MODE_ALL       0
 #define MODE_CEILING   1
@@ -40,7 +39,7 @@ uint8_t mode = MODE_ALL;
 #define BOUND_2 16 * 142
 #define BOUND_3 16 * 179
 #define BOUND_4 16 * 196
-#define BOUND_5 16 * 210.5 // 3368 16 * 210.5
+#define BOUND_5 3368 // 16 * 210.5
 #define BOUND_6 16 * 225
 #define BOUND_7 16 * 242
 #define BOUND_8 16 * 279
@@ -59,14 +58,15 @@ const Area modes[] = {
 Area active = modes[MODE_ALL];
 Area lastActive = modes[MODE_ALL];
 
-#define MODE_TRANSITION_DURATION 2000
+#define MODE_TRANSITION_DURATION 3000
 uint32_t modeTransitionStart;
+bool transition = false;
 
 
 MyMessage status_msg(CHILD_ID_LIGHT, V_STATUS);
 MyMessage brightness_msg(CHILD_ID_LIGHT, V_PERCENTAGE);
 MyMessage rgb_msg(CHILD_ID_LIGHT, V_RGB);
-MyMessage mode_msg(CHILD_ID_LIGHT_MODE, V_CUSTOM);
+MyMessage mode_msg(CHILD_ID_LIGHT, V_VAR1);
 
 char buf[6];
 
@@ -77,14 +77,13 @@ void presentation()
 	sendSketchInfo(SN, SV);
 
 	present(CHILD_ID_LIGHT, S_RGB_LIGHT);
-	present(CHILD_ID_LIGHT_MODE, S_CUSTOM);
-}
+}	
 
 void setup()
 {
 	LEDS.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
-
-	update_all();
+	LEDS.setBrightness(brightness * 255 / 100);
+	LEDS.clear(true);
 }
 
 void loop()
@@ -93,6 +92,9 @@ void loop()
 		send_all();
 		initialValueSent = true;
 	}
+
+	LEDS.delay(10);
+	updateTansition();
 	LEDS.show();
 }
 
@@ -100,30 +102,56 @@ void receive(const MyMessage &message)
 {
 	if (message.sensor == CHILD_ID_LIGHT) {
 		if (message.type == V_STATUS) {
-			state = message.getBool();
-			update_brightness();
+			setState(message.getBool());
 			send_status();
 		}
 
 		if (message.type == V_PERCENTAGE) {
-			brightness = message.getInt();
-			update_brightness();
+			setBrightness(message.getInt());
 			send_brightness();
 		}
 
 		if (message.type == V_RGB) {
 			String hexstring = message.getString();
-			color = strtol(&hexstring[0], NULL, 16);
+			setColor(strtol(&hexstring[0], NULL, 16));
 			send_color();
 		}
-	}
 
-	if (message.sensor == CHILD_ID_LIGHT_MODE) {
-		if (message.type == V_CUSTOM) {
-			mode = message.getInt();
+		if (message.type == V_VAR1) {
+			setMode(message.getInt());
 			send_mode();
 		}
 	}
+}
+
+void setState(uint8_t newState)
+{
+	if (newState == state) {
+		return;
+	}
+
+	state = newState;
+	draw();
+}
+
+void setBrightness(uint8_t newBrightness)
+{
+	if (newBrightness == brightness) {
+		return;
+	}
+
+	LEDS.setBrightness(newBrightness * 255 / 100);
+	brightness = newBrightness;
+}
+
+void setColor(CRGB newColor)
+{
+	if (newColor == color) {
+		return;
+	}
+
+	color = newColor;
+	draw();
 }
 
 void setMode(uint8_t newMode)
@@ -137,43 +165,38 @@ void setMode(uint8_t newMode)
 
 	mode = newMode;
 	modeTransitionStart = millis();
+	transition = true;
 }
 
-
-void update()
+void updateTansition()
 {
-	if (mode != lastMode) {
-		uint32_t elapsedTime = millis() - modeTransitionStart;
-
-		if (elapsedTime >= MODE_TRANSITION_DURATION) {
-			lastMode = mode;
-			elapsedTime = MODE_TRANSITION_DURATION;
-		}
-
-		active.transform(lastActive, modes[mode], MODE_TRANSITION_DURATION, elapsedTime);
+	if (!transition || state == LIGHT_OFF) {
+		return;
 	}
+		
+	uint32_t elapsedTime = millis() - modeTransitionStart;
+
+	if (elapsedTime >= MODE_TRANSITION_DURATION) {
+		transition = false;
+		elapsedTime = MODE_TRANSITION_DURATION;
+	}
+
+	active.transform(lastActive, modes[mode], MODE_TRANSITION_DURATION, elapsedTime);
+
+	draw();
 }
 
-void drawActive()
+void draw()
 {
-	LEDS.clear();
+	for (int i = 0; i < NUM_LEDS; i++) {
+		leds[i] = CRGB::Black;
+	}
 
-	active.draw(*leds);
-}
-
-void update_all()
-{
-	update_brightness();
-}
-
-void update_brightness()
-{
 	if (state == LIGHT_ON) {
-		LEDS.setBrightness(brightness * 255 / 100);
-	} else {
-		LEDS.setBrightness(0);
+		active.draw(leds, color);
 	}
 }
+
 
 void send_all()
 {
