@@ -1,3 +1,5 @@
+#include "Area.h"
+#include "Bar.h"
 #define MY_GATEWAY_SERIAL
 
 #include <MySensors.h>
@@ -5,36 +7,66 @@
 #define SN "Livingroom Backlight"
 #define SV "1.0"
 
-#define CHILD_ID_BRIGHTNESS 1
-#define CHILD_ID_SEG_1 11 // Child ID of a first segment. The following segments have an incremental ID
-#define CHILD_ID_IR 31
-
+#define CHILD_ID_LIGHT 1
+#define CHILD_ID_LIGHT_MODE 2
 
 #include <FastLED.h>
 
 #define NUM_LEDS 490
 #define NUM_LEDS_PER_STRIP 64
 #define NUM_STRIPS 8
-#define NUM_SEGMENTS 9
+
+CRGB leds[NUM_STRIPS * NUM_LEDS_PER_STRIP];
 
 #define LIGHT_OFF 0
 #define LIGHT_ON 1
 
-CRGB leds[NUM_STRIPS * NUM_LEDS_PER_STRIP];
-
 int16_t state = LIGHT_OFF;
 int16_t brightness = 50;
+CRGB color = CRGB::Yellow;
 
-const uint16_t segment_bounds[] = { 0, 94, 142, 179, 196, 225, 242, 279, 360, 490 };
+#define MODE_ALL       0
+#define MODE_CEILING   1
+#define MODE_WALL      2
+#define MODE_TV        3
+#define MODE_TV_SIDES  4
+#define MODE_TV_BOTTOM 5
 
-struct {
-	uint8_t state = LIGHT_ON;
-	CRGB color = CRGB::Yellow;
-} segments[NUM_SEGMENTS];
+uint8_t lastMode = MODE_ALL;
+uint8_t mode = MODE_ALL;
 
-MyMessage status_msg(CHILD_ID_BRIGHTNESS, V_STATUS);
-MyMessage brightness_msg(CHILD_ID_BRIGHTNESS, V_PERCENTAGE);
-MyMessage rgb_msg(CHILD_ID_SEG_1, V_RGB);
+#define BOUND_0 16 * 0
+#define BOUND_1 16 * 94
+#define BOUND_2 16 * 142
+#define BOUND_3 16 * 179
+#define BOUND_4 16 * 196
+#define BOUND_5 16 * 210.5 // 3368 16 * 210.5
+#define BOUND_6 16 * 225
+#define BOUND_7 16 * 242
+#define BOUND_8 16 * 279
+#define BOUND_9 16 * 360
+#define BOUND_10 16 * NUM_LEDS
+
+const Area modes[] = {
+	{ Bar(BOUND_0, BOUND_5), Bar(BOUND_5, BOUND_10) }, // MODE_ALL
+	{ Bar(BOUND_0, BOUND_2), Bar(BOUND_8, BOUND_10) }, // MODE_CEILING
+	{ Bar(BOUND_2, BOUND_5), Bar(BOUND_5, BOUND_8) },  // MODE_WALL
+	{ Bar(BOUND_3, BOUND_5), Bar(BOUND_5, BOUND_7) },  // MODE_TV
+	{ Bar(BOUND_3, BOUND_4), Bar(BOUND_6, BOUND_7) },  // MODE_TV_SIDES
+	{ Bar(BOUND_4, BOUND_5), Bar(BOUND_5, BOUND_6) }   // MODE_TV_BOTTON
+};
+
+Area active = modes[MODE_ALL];
+Area lastActive = modes[MODE_ALL];
+
+#define MODE_TRANSITION_DURATION 2000
+uint32_t modeTransitionStart;
+
+
+MyMessage status_msg(CHILD_ID_LIGHT, V_STATUS);
+MyMessage brightness_msg(CHILD_ID_LIGHT, V_PERCENTAGE);
+MyMessage rgb_msg(CHILD_ID_LIGHT, V_RGB);
+MyMessage mode_msg(CHILD_ID_LIGHT_MODE, V_CUSTOM);
 
 char buf[6];
 
@@ -44,13 +76,8 @@ void presentation()
 {
 	sendSketchInfo(SN, SV);
 
-	present(CHILD_ID_BRIGHTNESS, S_DIMMER);
-
-	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
-		present(CHILD_ID_SEG_1 + i, S_RGB_LIGHT);
-	}
-
-	//present(CHILD_ID_IR, S_IR, "IR receiver");
+	present(CHILD_ID_LIGHT, S_RGB_LIGHT);
+	present(CHILD_ID_LIGHT_MODE, S_CUSTOM);
 }
 
 void setup()
@@ -71,7 +98,7 @@ void loop()
 
 void receive(const MyMessage &message)
 {
-	if (message.sensor == CHILD_ID_BRIGHTNESS) {
+	if (message.sensor == CHILD_ID_LIGHT) {
 		if (message.type == V_STATUS) {
 			state = message.getBool();
 			update_brightness();
@@ -83,33 +110,60 @@ void receive(const MyMessage &message)
 			update_brightness();
 			send_brightness();
 		}
-	}
-
-	if (message.sensor >= CHILD_ID_SEG_1 && message.sensor < CHILD_ID_SEG_1 + NUM_SEGMENTS) {
-		uint8_t i = message.sensor - CHILD_ID_SEG_1;
-
-		if (message.type == V_STATUS) {
-			segments[i].state = message.getBool();
-			update_segment(i);
-			send_segment_status(i);
-		}
 
 		if (message.type == V_RGB) {
 			String hexstring = message.getString();
-			segments[i].color = strtol(&hexstring[0], NULL, 16);
-			update_segment(i);
-			send_segment_color(i);
+			color = strtol(&hexstring[0], NULL, 16);
+			send_color();
 		}
 	}
+
+	if (message.sensor == CHILD_ID_LIGHT_MODE) {
+		if (message.type == V_CUSTOM) {
+			mode = message.getInt();
+			send_mode();
+		}
+	}
+}
+
+void setMode(uint8_t newMode)
+{
+	if (newMode == mode) {
+		return;
+	}
+
+	lastMode = mode;
+	lastActive = active;
+
+	mode = newMode;
+	modeTransitionStart = millis();
+}
+
+
+void update()
+{
+	if (mode != lastMode) {
+		uint32_t elapsedTime = millis() - modeTransitionStart;
+
+		if (elapsedTime >= MODE_TRANSITION_DURATION) {
+			lastMode = mode;
+			elapsedTime = MODE_TRANSITION_DURATION;
+		}
+
+		active.transform(lastActive, modes[mode], MODE_TRANSITION_DURATION, elapsedTime);
+	}
+}
+
+void drawActive()
+{
+	LEDS.clear();
+
+	active.draw(*leds);
 }
 
 void update_all()
 {
 	update_brightness();
-
-	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
-		update_segment(i);
-	}
 }
 
 void update_brightness()
@@ -121,29 +175,16 @@ void update_brightness()
 	}
 }
 
-void update_segment(uint8_t i)
-{
-	if (segments[i].state == LIGHT_ON) {
-		fill_solid(&leds[segment_bounds[i]], segment_bounds[i + 1] - segment_bounds[i], segments[i].color);
-	} else {
-		fill_solid(&leds[segment_bounds[i]], segment_bounds[i + 1] - segment_bounds[i], CRGB::Black);
-	}
-}
-
 void send_all()
 {
 	send_status();
 	send_brightness();
-
-	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
-		send_segment_status(i);
-		send_segment_color(i);
-	}
+	send_color();
+	send_mode();
 }
 
 void send_status()
 {
-	status_msg.sensor = CHILD_ID_BRIGHTNESS;
 	send(status_msg.set(state));
 }
 
@@ -152,15 +193,14 @@ void send_brightness()
 	send(brightness_msg.set(brightness));
 }
 
-void send_segment_status(uint8_t i)
+void send_color()
 {
-	status_msg.sensor = CHILD_ID_SEG_1 + i;
-	send(status_msg.set(segments[i].state));
-}
-
-void send_segment_color(uint8_t i)
-{
-	rgb_msg.sensor = CHILD_ID_SEG_1 + i;
-	sprintf(buf, "%02X%02X%02X", segments[i].color.r, segments[i].color.g, segments[i].color.b);
+	sprintf(buf, "%02X%02X%02X", color.r, color.g, color.b);
 	send(rgb_msg.set(buf));
 }
+
+void send_mode()
+{
+	send(mode_msg.set(mode));
+}
+
