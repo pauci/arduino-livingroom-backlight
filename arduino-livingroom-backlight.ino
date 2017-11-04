@@ -38,16 +38,16 @@ MyMessage rgb_msg(CHILD_ID_SEG_1, V_RGB);
 
 char buf[6];
 
+bool initialValueSent = false;
+
 void presentation()
 {
 	sendSketchInfo(SN, SV);
 
-	present(CHILD_ID_BRIGHTNESS, S_DIMMER, "Brightness");
+	present(CHILD_ID_BRIGHTNESS, S_DIMMER);
 
 	for (uint8_t i = 0; i < NUM_SEGMENTS; i++) {
-		char desc[] = "Segment n";
-		itoa(i + 1, &desc[8], 10);
-		present(CHILD_ID_SEG_1 + i, S_RGB_LIGHT, desc);
+		present(CHILD_ID_SEG_1 + i, S_RGB_LIGHT);
 	}
 
 	//present(CHILD_ID_IR, S_IR, "IR receiver");
@@ -58,11 +58,14 @@ void setup()
 	LEDS.addLeds<WS2811_PORTD, NUM_STRIPS>(leds, NUM_LEDS_PER_STRIP);
 
 	update_all();
-	send_all();
 }
 
 void loop()
 {
+	if (!initialValueSent) {
+		send_all();
+		initialValueSent = true;
+	}
 	LEDS.show();
 }
 
